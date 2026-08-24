@@ -288,6 +288,45 @@ return await poll(
   { intervalMs: 5000, timeoutMs: 300000 },
 );`,
         },
+        {
+            label: i18n.t("modelPlugin.templates.autodl"),
+            script: `// ${i18n.t("modelPlugin.templates.videoAutodl")}
+// ${i18n.t("modelPlugin.templates.autodlChannel")}
+// ${i18n.t("modelPlugin.templates.availableVideoAutodl")}
+const api = baseUrl.trim().replace(/[/]+$/, "");
+const headers = { Authorization: apiKey, "Content-Type": "application/json" };
+
+// ===== ${i18n.t("modelPlugin.templates.autodlEditStart")} =====
+// ${i18n.t("modelPlugin.templates.autodlResolution")}
+const [w, h] = String(params.size || "").split("x").map(Number);
+const portrait = w && h ? h > w : ["9:16", "2:3", "3:4"].includes(params.ratio);
+const body = {
+  prompt,
+  duration: Number(params.seconds),
+  resolution: \`\${params.resolution}\${portrait ? "竖" : "横"}\`,
+};
+// ${i18n.t("modelPlugin.templates.autodlImageHint")}
+// if (images[0]) body.image = images[0];
+// ===== ${i18n.t("modelPlugin.templates.autodlEditEnd")} =====
+
+const created = await request({ method: "post", url: \`\${api}/api/v1/comfyui/comfyui_workflow/\${model}\`, headers, data: body });
+const taskId = created?.data?.task_id;
+if (!taskId) throw new Error(created?.msg || ${JSON.stringify(i18n.t("modelPlugin.templates.autodlNoTaskId"))});
+
+return await poll(
+  () => request({ method: "get", url: \`\${api}/api/v1/comfyui/comfyui_workflow/result/\${taskId}\`, headers }),
+  (state) => {
+    const data = state?.data || {};
+    if (data.status === "FAILED") throw new Error(data.fail_reason || ${JSON.stringify(i18n.t("modelPlugin.templates.autodlFailed"))});
+    if (data.status !== "SUCCESS") return null;
+    const first = (data.results || [])[0];
+    const url = typeof first === "string" ? first : first?.url;
+    if (!url) throw new Error(${JSON.stringify(i18n.t("modelPlugin.templates.autodlNoVideo"))});
+    return { url };
+  },
+  { intervalMs: 3000, timeoutMs: 900000 },
+);`,
+        },
     ],
     audio: [
         {

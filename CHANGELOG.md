@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## v0.16.1 - 2026-08-24
+
++ [新增] 视频模型调用脚本新增 AutoDL ComfyUI 模板，可把 AutoDL 的 ComfyUI 工作流接入画布视频生成。
++ [修复] 容器镜像改为发布到当前仓库所属账号名下，fork 仓库打 tag 后也能正常构建和拉取镜像。
+
 ## v0.16.0 - 2026-08-18
 
 + [新增] 提示词来源新增 Freestylefly GPT Image 2 内置来源。
