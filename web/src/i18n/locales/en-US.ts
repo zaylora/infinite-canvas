@@ -305,6 +305,8 @@ export default {
             pan: "Pan view",
             toggleTool: "Temporarily switch Select / Move",
             wheel: "Mouse wheel",
+            panVertical: "Pan canvas vertically",
+            panHorizontal: "Pan canvas horizontally",
             zoom: "Zoom canvas",
             zoomSlider: "Zoom slider",
             preciseZoom: "Adjust zoom precisely",

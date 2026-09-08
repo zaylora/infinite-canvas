@@ -305,6 +305,8 @@ export default {
             pan: "平移视图",
             toggleTool: "临时切换选择 / 移动",
             wheel: "滚轮",
+            panVertical: "上下平移画布",
+            panHorizontal: "左右平移画布",
             zoom: "缩放画布",
             zoomSlider: "缩放滑杆",
             preciseZoom: "精确调整缩放",

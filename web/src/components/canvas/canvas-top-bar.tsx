@@ -155,7 +155,9 @@ export function CanvasTopBar({
             <Modal title={t("canvas.shortcuts")} open={shortcutsOpen} onCancel={() => setShortcutsOpen(false)} footer={null} centered>
                 <div className="space-y-2 border-t pt-4 text-sm" style={{ borderColor: theme.node.stroke }}>
                     <Shortcut keys={["Space", t("canvas.shortcut.drag")]} value={t("canvas.toolbar.pan")} />
-                    <Shortcut keys={[t("canvas.shortcut.wheel")]} value={t("canvas.shortcut.zoom")} />
+                    <Shortcut keys={[t("canvas.shortcut.wheel")]} value={t("canvas.shortcut.panVertical")} />
+                    <Shortcut keys={["Shift", t("canvas.shortcut.wheel")]} value={t("canvas.shortcut.panHorizontal")} />
+                    <Shortcut keys={["Ctrl", t("canvas.shortcut.wheel")]} value={t("canvas.shortcut.zoom")} />
                     <Shortcut keys={[t("canvas.shortcut.zoomSlider")]} value={t("canvas.shortcut.preciseZoom")} />
                     <Shortcut keys={[t("canvas.shortcut.drag")]} value={t("canvas.shortcut.boxSelect")} />
                     <Shortcut keys={["Shift / Cmd", t("canvas.shortcut.click")]} value={t("canvas.shortcut.addSelection")} />

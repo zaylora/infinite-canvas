@@ -115,6 +115,15 @@ export function InfiniteCanvas({ containerRef, viewport, tool, onToolChange, bac
         if (target?.closest(".ant-modal,.ant-popover,.ant-dropdown,.ant-select-dropdown,.ant-picker-dropdown")) return;
         if (!event.ctrlKey && target?.closest("[data-canvas-no-zoom]")) return;
 
+        if (!event.ctrlKey) {
+            onViewportChange({
+                x: viewport.x - (event.shiftKey ? event.deltaY || event.deltaX : event.deltaX),
+                y: viewport.y - (event.shiftKey ? 0 : event.deltaY),
+                k: viewport.k,
+            });
+            return;
+        }
+
         const delta = -event.deltaY;
         const factor = Math.pow(1.1, delta / 100);
         const newScale = Math.min(Math.max(viewport.k * factor, 0.05), 5);
