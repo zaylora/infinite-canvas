@@ -15,7 +15,8 @@ import { nanoid } from "nanoid";
 import { getDataUrlByteSize, readImageMeta } from "@/lib/image-utils";
 import { imageReferenceLabel } from "@/lib/image-reference-prompt";
 import { canvasThemes, type CanvasBackgroundMode } from "@/lib/canvas-theme";
-import { useAssetStore } from "@/stores/use-asset-store";
+import { useAssetStore, type Asset } from "@/stores/use-asset-store";
+import { layoutAssetNodes } from "@/lib/canvas/canvas-asset-layout";
 import { useThemeStore } from "@/stores/use-theme-store";
 import { cropDataUrl, splitDataUrl, upscaleDataUrl } from "@/lib/canvas/canvas-image-data";
 import { fitNodeSize, nodeSizeFromRatio } from "@/lib/canvas/canvas-node-size";
@@ -50,7 +51,7 @@ import { usePluginHost } from "@/pages/canvas/hooks/use-plugin-host";
 import { buildNodeMentionReferences, getGroupResourceNodes, isCanvasReferenceNode, type CanvasResourceReference } from "@/lib/canvas/canvas-resource-references";
 import { exportCanvasProjects } from "@/lib/canvas/canvas-export";
 import { applyNodeConfigPatch, audioMetadata, buildAudioGenerationMetadata, buildImageGenerationMetadata, createCanvasNode, imageMetadata, videoMetadata } from "@/lib/canvas/canvas-node-factory";
-import { applyGroupSelection, applyUngroupSelection, canGroupSelectedNodes, canUngroupSelectedNodes, collectGroupMemberNodes, findContainingGroupId, findGroupDropTarget, getConnectionTargetAnchor, getGroupWrapRect, normalizeConnection, snapNodesIntoGroup } from "@/lib/canvas/canvas-node-geometry";
+import { applyGroupSelection, applyUngroupSelection, canGroupSelectedNodes, canUngroupSelectedNodes, collectGroupMemberNodes, findContainingGroupId, findGroupDropTarget, getConnectionTargetAnchor, getGroupWrapRect, nodeBounds, normalizeConnection, snapNodesIntoGroup } from "@/lib/canvas/canvas-node-geometry";
 import {
     archiveNodeGeneration,
     audioExtension,
@@ -3010,6 +3011,44 @@ function InfiniteCanvasPage() {
         [insertAssistantImage, insertAssistantText, screenToCanvas, size.height, size.width],
     );
 
+    const handleAssetsInsert = useCallback((assets: Asset[]) => {
+        if (!assets.length) return;
+        const center = getCanvasCenter();
+        const batch = assets.map((asset) => {
+            if (asset.kind === "text") return {
+                ...createCanvasNode(CanvasNodeType.Text, center, { content: asset.data.content, status: NODE_STATUS_SUCCESS }),
+                title: asset.title,
+            };
+            const type = asset.kind === "image" ? CanvasNodeType.Image : CanvasNodeType.Video;
+            const spec = NODE_DEFAULT_SIZE[type];
+            const dimensions = asset.kind === "image"
+                ? fitNodeSize(asset.data.width, asset.data.height)
+                : fitNodeSize(asset.data.width || spec.width, asset.data.height || spec.height, VIDEO_NODE_MAX_WIDTH, VIDEO_NODE_MAX_HEIGHT);
+            return {
+                ...createCanvasNode(type, center, {
+                    content: asset.kind === "image" ? asset.data.dataUrl : asset.data.url,
+                    storageKey: asset.data.storageKey, status: NODE_STATUS_SUCCESS,
+                    naturalWidth: asset.data.width, naturalHeight: asset.data.height,
+                    bytes: asset.data.bytes, mimeType: asset.data.mimeType,
+                }),
+                ...dimensions,
+                title: asset.title,
+            };
+        });
+        const inserted = layoutAssetNodes(batch, nodesRef.current, center);
+        nodesRef.current = [...nodesRef.current, ...inserted];
+        setNodes((prev) => [...prev, ...inserted]);
+        setSelectedNodeIds(new Set(inserted.map((node) => node.id)));
+        setSelectedConnectionId(null);
+        setDialogNodeId(null);
+        setToolbarNodeId(null);
+        setContextMenu(null);
+        const bounds = nodeBounds(inserted);
+        const k = Math.min(viewportRef.current.k, size.width * 0.8 / (bounds.right - bounds.left), size.height * 0.8 / (bounds.bottom - bounds.top));
+        if (focusAnimRef.current) cancelAnimationFrame(focusAnimRef.current);
+        setViewport({ x: size.width / 2 - (bounds.left + bounds.right) / 2 * k, y: size.height / 2 - (bounds.top + bounds.bottom) / 2 * k, k });
+    }, [getCanvasCenter, size.width, size.height]);
+
     // Memoize every callback and render function passed to CanvasNode.
     // CanvasNode uses React.memo, but new prop references would invalidate it on every render and rerender every node
     // during click, hover, or viewport changes, which is especially expensive for Markdown. These useCallback values
@@ -3105,7 +3144,7 @@ function InfiniteCanvasPage() {
 
     return (
         <main className="flex h-full min-h-0 overflow-hidden" style={{ background: theme.canvas.background, color: theme.node.text }}>
-            <CanvasSidePanel nodes={nodes} selectedNodeIds={selectedNodeIds} onFocusNode={focusNode} onPreviewNode={setPreviewNodeId} onInsertAsset={handleAssetInsert} />
+            <CanvasSidePanel nodes={nodes} selectedNodeIds={selectedNodeIds} onFocusNode={focusNode} onPreviewNode={setPreviewNodeId} onInsertAsset={handleAssetInsert} onInsertAssets={handleAssetsInsert} />
             <section className="relative min-w-0 flex-1 overflow-hidden">
                 <CanvasTopBar
                     title={currentProject?.title || t("canvas.projectPage.untitledCanvas")}
