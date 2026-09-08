@@ -1,5 +1,5 @@
 import { memo, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { App, Button, Empty, Input, Modal, Popconfirm, Select, Spin, Tag } from "antd";
+import { App, Button, Empty, Input, Modal, Select, Spin, Tag } from "antd";
 import { useQuery } from "@tanstack/react-query";
 import { BookOpen, Check, ChevronRight, Download, Eye, FileText, Image as ImageIcon, ListChecks, Music2, Plus, Search, Settings2, Square, Trash2, Type, Video } from "lucide-react";
 import { motion } from "motion/react";
@@ -20,6 +20,7 @@ import { useThemeStore } from "@/stores/use-theme-store";
 import { CanvasNodeType, type CanvasNodeData } from "@/types/canvas";
 
 import type { InsertAssetPayload } from "./asset-picker-modal";
+import { useAssetSelection } from "./use-asset-selection";
 
 const PANEL_MOTION_SECONDS = CANVAS_SIDE_PANEL_MOTION_MS / 1000;
 const PANEL_EASE = [0.22, 1, 0.36, 1] as const;
@@ -109,7 +110,7 @@ export function CanvasSidePanel({ nodes, selectedNodeIds, onFocusNode, onPreview
                     {tab === "canvas" ? (
                         <CanvasNodesTab nodes={nodes} selectedNodeIds={selectedNodeIds} onFocusNode={onFocusNode} onPreviewNode={onPreviewNode} theme={theme} />
                     ) : tab === "assets" ? (
-                        <CanvasAssetsTab onInsert={onInsertAsset} onInsertAssets={onInsertAssets} theme={theme} />
+                        <CanvasAssetsTab onInsertAssets={onInsertAssets} theme={theme} />
                     ) : (
                         <CanvasPromptsTab onInsert={onInsertAsset} theme={theme} />
                     )}
@@ -294,7 +295,7 @@ function CheckMark({ checked, theme }: { checked: boolean; theme: CanvasTheme })
 }
 
 // ---------------------------------------------------------------------------
-// Assets tab: collapsible type groups, tag filtering, and click-to-insert.
+// Assets tab: collapsible type groups, tag filtering, and rectangle selection.
 // ---------------------------------------------------------------------------
 
 const ASSET_GROUPS: { kind: AssetKind; icon: typeof Square }[] = [
@@ -304,15 +305,8 @@ const ASSET_GROUPS: { kind: AssetKind; icon: typeof Square }[] = [
     { kind: "audio", icon: Music2 },
 ];
 
-function buildInsertPayload(asset: Asset): InsertAssetPayload {
-    if (asset.kind === "text") return { kind: "text", content: asset.data.content, title: asset.title };
-    if (asset.kind === "audio") return { kind: "audio", ...asset.data, title: asset.title };
-    if (asset.kind === "video") return { kind: "video", url: asset.data.url, storageKey: asset.data.storageKey, title: asset.title, width: asset.data.width, height: asset.data.height };
-    return { kind: "image", dataUrl: asset.data.dataUrl, storageKey: asset.data.storageKey, title: asset.title };
-}
-
-const CanvasAssetsTab = memo(function CanvasAssetsTab({ onInsert, onInsertAssets, theme }: { onInsert: (payload: InsertAssetPayload) => void; onInsertAssets: (assets: Asset[]) => void; theme: CanvasTheme }) {
-    const { message } = App.useApp();
+const CanvasAssetsTab = memo(function CanvasAssetsTab({ onInsertAssets, theme }: { onInsertAssets: (assets: Asset[]) => void; theme: CanvasTheme }) {
+    const { message, modal } = App.useApp();
     const { t } = useTranslation();
     const assets = useAssetStore((state) => state.assets);
     const addAsset = useAssetStore((state) => state.addAsset);
@@ -325,8 +319,7 @@ const CanvasAssetsTab = memo(function CanvasAssetsTab({ onInsert, onInsertAssets
     const [importFiles, setImportFiles] = useState<File[]>([]);
     const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
     const [uploading, setUploading] = useState(false);
-    const [selecting, setSelecting] = useState(false);
-    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const { selectedIds, setSelectedIds, selectionRect, selectionHandlers } = useAssetSelection();
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const allTags = useMemo(() => Array.from(new Set(assets.flatMap((asset) => asset.tags || []))).slice(0, 20), [assets]);
@@ -345,6 +338,21 @@ const CanvasAssetsTab = memo(function CanvasAssetsTab({ onInsert, onInsertAssets
         else next.add(id);
         return next;
     });
+
+    const deleteSelected = () => {
+        modal.confirm({
+            title: t("canvas.sidePanel.deleteSelectedAssets", { count: selectedAssets.length }),
+            content: t("canvas.sidePanel.deleteSelectedAssetsHint"),
+            okText: t("common.delete"),
+            cancelText: t("common.cancel"),
+            okButtonProps: { danger: true },
+            onOk: () => {
+                selectedAssets.forEach((asset) => removeAsset(asset.id));
+                setSelectedIds(new Set());
+                message.success(t("canvas.sidePanel.assetRemoved"));
+            },
+        });
+    };
 
     const handleFiles = async () => {
         const files = importFiles;
@@ -385,7 +393,7 @@ const CanvasAssetsTab = memo(function CanvasAssetsTab({ onInsert, onInsertAssets
     return (
         <div className="flex h-full flex-col">
             <div className="flex items-center gap-2 px-3 pb-2 pt-1">
-                <Input size="small" allowClear prefix={<Search className="size-3.5 text-stone-400" />} placeholder={t("canvas.sidePanel.searchAssets")} value={keyword} onChange={(e) => setKeyword(e.target.value)} />
+                <Input size="small" allowClear prefix={<Search className="size-3.5 text-stone-400" />} placeholder={t("canvas.sidePanel.searchAssets")} value={keyword} onChange={(e) => { setKeyword(e.target.value); setSelectedIds(new Set()); }} />
                 <button
                     type="button"
                     disabled={uploading}
@@ -418,33 +426,38 @@ const CanvasAssetsTab = memo(function CanvasAssetsTab({ onInsert, onInsertAssets
                 ))}
             </div>
             <div className="flex flex-wrap items-center gap-1 px-3 pb-2 text-xs">
-                <button type="button" className="flex items-center gap-1 rounded-md px-2 py-1 hover:bg-black/5 dark:hover:bg-white/10" onClick={() => { setSelecting(!selecting); setSelectedIds(new Set()); }}>
-                    <ListChecks className="size-3.5" />
-                    {t(selecting ? "common.cancel" : "canvas.sidePanel.multiSelectAssets")}
+                <button type="button" className="rounded-md px-2 py-1 hover:bg-black/5 disabled:opacity-50 dark:hover:bg-white/10" disabled={!filtered.length} onClick={() => setSelectedIds(allSelected ? new Set() : new Set(filtered.map((asset) => asset.id)))}>
+                    {t(allSelected ? "canvas.sidePanel.clearAll" : "canvas.sidePanel.selectFilteredAssets")}
                 </button>
-                {selecting ? <>
-                    <button type="button" className="rounded-md px-2 py-1 hover:bg-black/5 disabled:opacity-50 dark:hover:bg-white/10" disabled={!filtered.length} onClick={() => setSelectedIds(allSelected ? new Set() : new Set(filtered.map((asset) => asset.id)))}>
-                        {t(allSelected ? "canvas.sidePanel.clearAll" : "canvas.sidePanel.selectFilteredAssets")}
-                    </button>
-                    <button type="button" disabled={!selectedAssets.length} className="flex items-center gap-1 rounded-md px-2 py-1 hover:bg-black/5 disabled:opacity-50 dark:hover:bg-white/10" onClick={() => { onInsertAssets(selectedAssets); setSelectedIds(new Set()); setSelecting(false); }}>
+                <span className="opacity-50">{t("canvas.sidePanel.selected", { count: selectedAssets.length })}</span>
+                <div className="flex w-full flex-wrap items-center gap-1">
+                    <button type="button" disabled={!selectedAssets.length} className="flex items-center gap-1 rounded-md px-2 py-1 hover:bg-black/5 disabled:opacity-50 dark:hover:bg-white/10" onClick={() => { onInsertAssets(selectedAssets); setSelectedIds(new Set()); }}>
                         <Plus className="size-3.5" />
                         {t("canvas.sidePanel.insertSelectedAssets", { count: selectedAssets.length })}
                     </button>
-                </> : null}
+                    <button type="button" disabled={!selectedAssets.length} className="flex items-center gap-1 rounded-md px-2 py-1 hover:bg-black/5 disabled:opacity-50 dark:hover:bg-white/10" onClick={deleteSelected}>
+                        <Trash2 className="size-3.5" />
+                        {t("common.delete")}
+                    </button>
+                    <button type="button" disabled={!selectedAssets.length} className="rounded-md px-2 py-1 hover:bg-black/5 disabled:opacity-50 dark:hover:bg-white/10" onClick={() => setSelectedIds(new Set())}>
+                        {t("canvas.sidePanel.cancelAssetSelection")}
+                    </button>
+                </div>
             </div>
             {allTags.length ? (
                 <div className="flex flex-wrap gap-1.5 px-3 pb-2">
-                    <Tag.CheckableTag checked={tagFilter === "all"} className={cn("prompt-filter-tag", tagFilter === "all" && "is-active")} onChange={() => setTagFilter("all")}>
+                    <Tag.CheckableTag checked={tagFilter === "all"} className={cn("prompt-filter-tag", tagFilter === "all" && "is-active")} onChange={() => { setTagFilter("all"); setSelectedIds(new Set()); }}>
                         {t("common.all")}
                     </Tag.CheckableTag>
                     {allTags.map((tag) => (
-                        <Tag.CheckableTag key={tag} checked={tagFilter === tag} className={cn("prompt-filter-tag", tagFilter === tag && "is-active")} onChange={() => setTagFilter((prev) => (prev === tag ? "all" : tag))}>
+                        <Tag.CheckableTag key={tag} checked={tagFilter === tag} className={cn("prompt-filter-tag", tagFilter === tag && "is-active")} onChange={() => { setTagFilter((prev) => (prev === tag ? "all" : tag)); setSelectedIds(new Set()); }}>
                             {tag}
                         </Tag.CheckableTag>
                     ))}
                 </div>
             ) : null}
-            <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
+            <div className="relative min-h-0 flex-1 select-none overflow-y-auto px-2 pb-3" {...selectionHandlers}>
+                {selectionRect ? <div className="pointer-events-none absolute z-10 border" style={{ ...selectionRect, borderColor: theme.canvas.selectionStroke, background: theme.canvas.selectionFill }} /> : null}
                 {groups.length ? (
                     <div className="space-y-1">
                         {groups.map((group) => {
@@ -464,7 +477,7 @@ const CanvasAssetsTab = memo(function CanvasAssetsTab({ onInsert, onInsertAssets
                                     {isCollapsed ? null : (
                                         <div className="grid grid-cols-2 gap-2 px-1 pb-2 pt-1">
                                             {group.items.map((asset) => (
-                                                <AssetCard key={asset.id} asset={asset} theme={theme} selecting={selecting} selected={selectedIds.has(asset.id)} onToggle={() => toggleAsset(asset.id)} onInsert={() => onInsert(buildInsertPayload(asset))} onRemove={() => (removeAsset(asset.id), message.success(t("canvas.sidePanel.assetRemoved")))} />
+                                                <AssetCard key={asset.id} asset={asset} theme={theme} selected={selectedIds.has(asset.id)} onToggle={() => toggleAsset(asset.id)} />
                                             ))}
                                         </div>
                                     )}
@@ -480,37 +493,14 @@ const CanvasAssetsTab = memo(function CanvasAssetsTab({ onInsert, onInsertAssets
     );
 });
 
-function AssetCard({ asset, theme, selecting, selected, onToggle, onInsert, onRemove }: { asset: Asset; theme: CanvasTheme; selecting: boolean; selected: boolean; onToggle: () => void; onInsert: () => void; onRemove: () => void }) {
-    const { t } = useTranslation();
+function AssetCard({ asset, theme, selected, onToggle }: { asset: Asset; theme: CanvasTheme; selected: boolean; onToggle: () => void }) {
     return (
-        <div className="group relative aspect-square overflow-hidden rounded-xl border transition duration-200 hover:-translate-y-0.5 hover:shadow-lg" style={{ borderColor: selecting && selected ? theme.node.activeStroke : theme.node.stroke, background: theme.node.panel }}>
-            <AssetCover asset={asset} />
-            {selecting ? (
-                <button type="button" className="absolute inset-0 rounded-[inherit] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px]" aria-label={asset.title} aria-pressed={selected} onClick={onToggle}>
-                    <span className="absolute left-2 top-2 grid size-5 place-items-center rounded border" style={{ background: selected ? theme.toolbar.activeBg : theme.toolbar.panel, borderColor: selected ? theme.node.activeStroke : theme.node.stroke, color: theme.node.text }}>
-                        {selected ? <Check className="size-3.5" /> : null}
-                    </span>
-                </button>
-            ) : <div className="absolute inset-0 flex items-center justify-center gap-2.5 opacity-0 transition duration-200 group-hover:opacity-100">
-                <button
-                    type="button"
-                    onClick={onInsert}
-                    className="grid size-8 place-items-center rounded-full bg-white/90 text-stone-700 shadow-sm backdrop-blur transition hover:bg-white hover:text-stone-900 dark:bg-black/60 dark:text-stone-100 dark:hover:bg-black/80"
-                    aria-label={t("canvas.sidePanel.inserted")}
-                >
-                    <Plus className="size-4" />
-                </button>
-                <Popconfirm title={t("canvas.sidePanel.removeAssetTitle")} okText={t("canvas.sidePanel.remove")} cancelText={t("common.cancel")} okButtonProps={{ danger: true }} onConfirm={onRemove}>
-                    <button
-                        type="button"
-                        className="grid size-8 place-items-center rounded-full bg-white/90 text-stone-700 shadow-sm backdrop-blur transition hover:bg-white hover:text-red-500 dark:bg-black/60 dark:text-stone-100 dark:hover:bg-black/80 dark:hover:text-red-400"
-                        aria-label={t("canvas.sidePanel.removeAsset")}
-                    >
-                        <Trash2 className="size-4" />
-                    </button>
-                </Popconfirm>
-            </div>}
-        </div>
+        <button type="button" data-asset-id={asset.id} aria-label={asset.title} aria-pressed={selected} onClick={onToggle} className="group relative aspect-square overflow-hidden rounded-xl border text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px]" style={{ borderColor: selected ? theme.node.activeStroke : theme.node.stroke, background: theme.node.panel }}>
+            <div className="pointer-events-none size-full"><AssetCover asset={asset} /></div>
+            <span className={cn("pointer-events-none absolute left-2 top-2 grid size-5 place-items-center rounded border", !selected && "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100")} style={{ background: selected ? theme.toolbar.activeBg : theme.toolbar.panel, borderColor: selected ? theme.node.activeStroke : theme.node.stroke, color: theme.node.text }}>
+                {selected ? <Check className="size-3.5" /> : null}
+            </span>
+        </button>
     );
 }
 
