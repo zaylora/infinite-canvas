@@ -1,4 +1,4 @@
-export function fitNodeSize(width: number, height: number, maxWidth = 640, maxHeight = 640) {
+export function fitNodeSize(width: number, height: number, maxWidth = 420, maxHeight = 300) {
     const w = Math.max(1, width);
     const h = Math.max(1, height);
     const scale = Math.min(1, maxWidth / w, maxHeight / h);
