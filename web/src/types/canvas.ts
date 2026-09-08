@@ -45,6 +45,7 @@ export type CanvasNodeText = {
 };
 
 export type CanvasNodeMetadata = {
+    generationHistory?: Array<{ id: string; metadata: Omit<CanvasNodeMetadata, "generationHistory"> }>;
     content?: string;
     composerContent?: string;
     prompt?: string;

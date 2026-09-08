@@ -40,7 +40,8 @@ export type NodeGenerationInput = NodeGenerationResourceInput | NodeGenerationGr
 export function buildNodeGenerationContext(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[], prompt: string): NodeGenerationContext {
     const inputs = buildNodeGenerationInputs(nodeId, nodes, connections);
     const sourceNode = nodes.find((node) => node.id === nodeId);
-    if (sourceNode?.type === CanvasNodeType.Config && Boolean(sourceNode.metadata?.composerContent?.trim())) {
+    const configNode = sourceNode?.type === CanvasNodeType.Config ? sourceNode : nodes.find((node) => node.type === CanvasNodeType.Config && connections.some((connection) => connection.fromNodeId === node.id && connection.toNodeId === nodeId));
+    if (Boolean(configNode?.metadata?.composerContent?.trim())) {
         return buildComposerGenerationContext(inputs, prompt);
     }
 

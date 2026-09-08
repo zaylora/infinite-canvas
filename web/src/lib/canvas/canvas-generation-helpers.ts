@@ -1,4 +1,5 @@
 import { defaultConfig, resolveModelForCapability, type AiConfig } from "@/stores/use-config-store";
+import { nanoid } from "nanoid";
 import i18n from "@/i18n";
 import { resolveImageUrl, uploadImage } from "@/services/image-storage";
 import { resolveMediaUrl } from "@/services/file-storage";
@@ -81,6 +82,12 @@ export async function hydrateAssistantImages(sessions: CanvasAssistantSession[])
 
 export function getGenerationCount(count: string) {
     return Math.max(1, Math.min(15, Math.floor(Math.abs(Number(count)) || 1)));
+}
+
+export function archiveNodeGeneration(metadata: CanvasNodeMetadata = {}) {
+    const { generationHistory = [], ...snapshot } = metadata;
+    if (!snapshot.content && !snapshot.images?.some((image) => image.content) && !snapshot.texts?.some((text) => text.content)) return generationHistory;
+    return [...generationHistory, { id: nanoid(), metadata: snapshot }];
 }
 
 export function getInputSummary(inputs: NodeGenerationInput[]) {

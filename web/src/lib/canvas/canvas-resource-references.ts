@@ -75,9 +75,11 @@ function getContextInputNodes(nodeId: string, nodes: CanvasNodeData[], connectio
 }
 
 function getConnectedConfigInputNodes(nodeId: string, nodes: CanvasNodeData[], connections: CanvasConnection[]) {
-    const configConnection = connections.find((connection) => connection.fromNodeId === nodeId && nodes.find((node) => node.id === connection.toNodeId)?.type === CanvasNodeType.Config);
+    const configConnection = connections.find((connection) => connection.toNodeId === nodeId && nodes.find((node) => node.id === connection.fromNodeId)?.type === CanvasNodeType.Config)
+        || connections.find((connection) => connection.fromNodeId === nodeId && nodes.find((node) => node.id === connection.toNodeId)?.type === CanvasNodeType.Config);
     if (!configConnection) return [];
-    return getContextInputNodes(configConnection.toNodeId, nodes, connections).filter((node) => node.id !== nodeId);
+    const configNodeId = configConnection.fromNodeId === nodeId ? configConnection.toNodeId : configConnection.fromNodeId;
+    return getContextInputNodes(configNodeId, nodes, connections).filter((node) => node.id !== nodeId);
 }
 
 function hasGroupResources(node: CanvasNodeData, nodes: CanvasNodeData[]) {

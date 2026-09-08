@@ -52,8 +52,9 @@ export function InfiniteCanvas({ containerRef, viewport, tool, onToolChange, bac
         const handleKeyDown = (event: KeyboardEvent) => {
             if (event.code !== "Space") return;
             const target = event.target instanceof Element ? event.target : null;
-            if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLSelectElement || target?.closest("[contenteditable='true']")) return;
+            if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLSelectElement || target?.closest("[contenteditable='true'],[data-canvas-shortcuts-ignore]")) return;
             event.preventDefault();
+            event.stopPropagation();
             if (event.repeat) return;
             toolBeforeSpace.current = tool;
             onToolChange("pan");
@@ -68,7 +69,10 @@ export function InfiniteCanvas({ containerRef, viewport, tool, onToolChange, bac
         const handleKeyUp = (event: KeyboardEvent) => {
             if (event.code === "Space") {
                 const target = event.target instanceof Element ? event.target : null;
-                if (!(event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLSelectElement || target?.closest("[contenteditable='true']"))) event.preventDefault();
+                if (!(event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLSelectElement || target?.closest("[contenteditable='true'],[data-canvas-shortcuts-ignore]"))) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                }
                 releaseSpace();
             }
         };
@@ -84,12 +88,12 @@ export function InfiniteCanvas({ containerRef, viewport, tool, onToolChange, bac
             document.body.style.cursor = "";
         };
 
-        window.addEventListener("keydown", handleKeyDown);
-        window.addEventListener("keyup", handleKeyUp);
+        window.addEventListener("keydown", handleKeyDown, true);
+        window.addEventListener("keyup", handleKeyUp, true);
         window.addEventListener("blur", handleBlur);
         return () => {
-            window.removeEventListener("keydown", handleKeyDown);
-            window.removeEventListener("keyup", handleKeyUp);
+            window.removeEventListener("keydown", handleKeyDown, true);
+            window.removeEventListener("keyup", handleKeyUp, true);
             window.removeEventListener("blur", handleBlur);
         };
     }, [containerRef, onToolChange, tool]);
@@ -189,6 +193,9 @@ export function InfiniteCanvas({ containerRef, viewport, tool, onToolChange, bac
         const isBackgroundClick = !target?.closest("[data-node-id],[data-connection-id]");
         if (event.button === 0 && isBackgroundClick) {
             event.preventDefault();
+            // 阻止默认行为后需主动释放焦点，避免视频控件继续接收空格。
+            const focused = document.activeElement;
+            if (focused instanceof HTMLElement && event.currentTarget.contains(focused)) focused.blur();
             event.currentTarget.setPointerCapture(event.pointerId);
             onCanvasMouseDown?.(event);
         }
