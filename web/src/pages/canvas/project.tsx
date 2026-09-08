@@ -901,6 +901,17 @@ function InfiniteCanvasPage() {
         setConnections((prev) => prev.filter((connection) => connection.fromNodeId !== fromNodeId || connection.toNodeId !== toNodeId));
     }, []);
 
+    const connectPromptReference = useCallback((fromNodeId: string, toNodeId: string) => {
+        const target = nodesRef.current.find((node) => node.id === toNodeId)!;
+        const references = buildNodeMentionReferences(target, nodesRef.current, connectionsRef.current);
+        const existing = references.find((reference) => reference.nodeId === fromNodeId);
+        if (existing) return existing;
+        const connection = { id: nanoid(), fromNodeId, toNodeId };
+        const next = [...connectionsRef.current, connection];
+        setConnections((prev) => prev.some((item) => item.fromNodeId === fromNodeId && item.toNodeId === toNodeId) ? prev : [...prev, connection]);
+        return buildNodeMentionReferences(target, nodesRef.current, next).find((reference) => reference.nodeId === fromNodeId)!;
+    }, []);
+
     const startNodeReferenceSelection = useCallback((nodeId: string) => {
         setReferencePickerNodeId(nodeId);
         setSelectedNodeIds(new Set([nodeId]));
@@ -3044,6 +3055,7 @@ function InfiniteCanvasPage() {
                     nodes={nodes}
                     isRunning={runningNodeId === panelNode.id}
                     mentionReferences={mentionReferencesByNodeId.get(panelNode.id) || EMPTY_REFERENCES}
+                    onConnectReference={connectPromptReference}
                     connectedNodes={connectedNodesByNodeId.get(panelNode.id) || []}
                     onPromptChange={handleNodePromptChange}
                     onConfigChange={handleConfigNodeChange}
@@ -3058,7 +3070,7 @@ function InfiniteCanvasPage() {
                     }}
                 />
             ),
-        [configInputsById, confirmStopGeneration, connectedNodesByNodeId, disconnectNodeReference, handleConfigNodeChange, handleGenerateNode, handleNodePromptChange, mentionReferencesByNodeId, nodes, renderPluginPanel, runningNodeId, startNodeReferenceSelection],
+        [configInputsById, confirmStopGeneration, connectedNodesByNodeId, connectPromptReference, disconnectNodeReference, handleConfigNodeChange, handleGenerateNode, handleNodePromptChange, mentionReferencesByNodeId, nodes, renderPluginPanel, runningNodeId, startNodeReferenceSelection],
     );
 
     const renderNodeContentPanel = useCallback(

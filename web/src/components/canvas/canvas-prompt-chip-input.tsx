@@ -13,6 +13,8 @@ import type { CanvasResourceReference } from "@/lib/canvas/canvas-resource-refer
 type Props = {
     value: string;
     references: CanvasResourceReference[];
+    availableReferences?: CanvasResourceReference[];
+    onSelectReference?: (reference: CanvasResourceReference) => CanvasResourceReference;
     onChange: (value: string) => void;
     onSubmit?: () => void;
     className?: string;
@@ -31,7 +33,7 @@ type Token =
 
 // Prompt-panel contentEditable input: @ references embed thumbnail chips instead of plain label text.
 // Serialization converts chips back to reference labels so the generated value matches the former textarea semantics.
-export function CanvasPromptChipInput({ value, references, onChange, onSubmit, className, style, placeholder }: Props) {
+export function CanvasPromptChipInput({ value, references, availableReferences = references, onSelectReference, onChange, onSubmit, className, style, placeholder }: Props) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const editorRef = useRef<HTMLDivElement>(null);
     const composingRef = useRef(false);
@@ -51,9 +53,9 @@ export function CanvasPromptChipInput({ value, references, onChange, onSubmit, c
     const candidates = useMemo(() => {
         if (!mention) return [];
         const query = mention.query.trim().toLowerCase();
-        if (!query) return activeReferences;
-        return activeReferences.filter((item) => `${item.label} ${item.title} ${item.kind} ${item.text || ""}`.toLowerCase().includes(query));
-    }, [mention, activeReferences]);
+        if (!query) return availableReferences;
+        return availableReferences.filter((item) => `${item.label} ${item.title} ${item.kind} ${item.text || ""}`.toLowerCase().includes(query));
+    }, [mention, availableReferences]);
 
     // Rebuild the DOM from value when unfocused, or when a focused value is an external change rather than an emitted echo.
     useEffect(() => {
@@ -88,7 +90,7 @@ export function CanvasPromptChipInput({ value, references, onChange, onSubmit, c
     const syncMention = () => {
         const text = textBeforeCaret();
         const match = /@([^\s@]*)$/.exec(text);
-        if (!match || !activeReferences.length) {
+        if (!match || !availableReferences.length) {
             closeMention();
             return;
         }
@@ -104,6 +106,7 @@ export function CanvasPromptChipInput({ value, references, onChange, onSubmit, c
     const insertReference = (reference: CanvasResourceReference) => {
         const editor = editorRef.current;
         if (!editor) return;
+        reference = onSelectReference?.(reference) ?? reference;
         removeActiveMention();
         const chip = createReferenceChip(reference, theme, setImagePreview);
         const space = document.createTextNode(" ");
