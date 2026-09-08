@@ -1,6 +1,6 @@
 import { javascript } from "@codemirror/lang-javascript";
 import CodeMirror from "@uiw/react-codemirror";
-import { Button, Modal } from "antd";
+import { App, Button, Modal } from "antd";
 import { Copy } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 import { useCopyText } from "@/hooks/use-copy-text";
 import { getPluginAuthoringPrompt, getPluginReturn, getPluginTemplates, getPluginVariables } from "@/services/api/model-plugin";
 import type { ModelCapability } from "@/stores/use-config-store";
+import { parseVideoScriptSettings } from "@/lib/video-script-settings";
 
 function isDarkMode() {
     return typeof document !== "undefined" && document.documentElement.classList.contains("dark");
@@ -32,6 +33,7 @@ function StepBlock({ index, title, children }: { index: number; title: string; c
 }
 
 export function ModelScriptEditor({ open, capability, modelName, value, onSave, onClose }: { open: boolean; capability: ModelCapability; modelName: string; value: string; onSave: (script: string) => void; onClose: () => void }) {
+    const { message } = App.useApp();
     const { t } = useTranslation();
     const copyText = useCopyText();
     const [draft, setDraft] = useState(value);
@@ -170,6 +172,12 @@ export function ModelScriptEditor({ open, capability, modelName, value, onSave, 
                         <Button
                             type="primary"
                             onClick={() => {
+                                try {
+                                    if (capability === "video") parseVideoScriptSettings(draft);
+                                } catch (error) {
+                                    message.error((error as Error).message);
+                                    return;
+                                }
                                 onSave(draft.trim());
                                 onClose();
                             }}

@@ -2,6 +2,7 @@ import axios, { type AxiosRequestConfig } from "axios";
 
 import i18n from "@/i18n";
 import { buildApiUrl, withLocalProxy, type AiConfig, type ModelCapability } from "@/stores/use-config-store";
+import { videoSettingsHelp } from "@/lib/video-script-settings";
 
 type RequestOptions = { signal?: AbortSignal };
 
@@ -209,6 +210,7 @@ export function getPluginAuthoringPrompt(capability: ModelCapability, modelName:
         i18n.t("modelPlugin.authoring.rules"),
     ];
     const templates = getPluginTemplates()[capability];
+    if (capability === "video") lines.push("", videoSettingsHelp);
     if (templates.length) {
         lines.push("", i18n.t("modelPlugin.authoring.examplesTitle"));
         for (const template of templates) {

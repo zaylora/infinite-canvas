@@ -8,6 +8,7 @@ import { getMediaBlob, resolveMediaUrl, uploadMediaFile, type UploadedFile } fro
 import { imageToDataUrl } from "@/services/image-storage";
 import { boolConfig, buildApiUrl, modelOptionName, resolveModelRequestConfig, resolveModelScript, withLocalProxy, type AiConfig } from "@/stores/use-config-store";
 import { runModelPlugin } from "./model-plugin";
+import { applyVideoScriptSettings, parseVideoScriptSettings } from "@/lib/video-script-settings";
 import type { ReferenceImage } from "@/types/image";
 import type { ReferenceAudio, ReferenceVideo } from "@/types/media";
 
@@ -71,6 +72,8 @@ function videoTaskFailed(message: string) {
 
 export async function createVideoGenerationTask(config: AiConfig, prompt: string, references: ReferenceImage[] = [], options?: VideoMediaOptions): Promise<VideoGenerationTask> {
     const selectedModel = (config.model || config.videoModel).trim();
+    const settings = parseVideoScriptSettings(resolveModelScript(config, selectedModel));
+    config = applyVideoScriptSettings(config, settings);
     const requestConfig = resolveModelRequestConfig(config, selectedModel);
     const script = resolveModelScript(config, selectedModel);
     if (script) return createPluginVideoTask(requestConfig, selectedModel, script, prompt, references, options);
@@ -91,6 +94,7 @@ export async function pollVideoGenerationTask(config: AiConfig, task: VideoGener
 }
 
 async function createPluginVideoTask(config: AiConfig, model: string, script: string, prompt: string, references: ReferenceImage[], options?: VideoMediaOptions): Promise<VideoGenerationTask> {
+    const settings = parseVideoScriptSettings(script);
     if (!config.baseUrl.trim()) throw new Error(apiText("baseUrlRequired"));
     if (!config.apiKey.trim()) throw new Error(apiText("apiKeyRequired"));
     const refs = await Promise.all(references.map((image) => imageToDataUrl(image)));
@@ -106,13 +110,13 @@ async function createPluginVideoTask(config: AiConfig, model: string, script: st
             videos,
             audios,
             params: {
-                seconds: normalizeVideoSeconds(config.videoSeconds),
+                seconds: settings?.seconds ? config.videoSeconds : normalizeVideoSeconds(config.videoSeconds),
                 size: normalizeVideoSize(config.size, config.vquality),
                 resolution: normalizeVideoResolution(config.vquality),
                 ratio: videoAspectRatio(config.size),
                 generateAudio: boolConfig(config.videoGenerateAudio, true),
                 watermark: boolConfig(config.videoWatermark, false),
-                mode: resolveVideoMode(config.videoMode, refs.length),
+                mode: settings?.mode ? config.videoMode : resolveVideoMode(config.videoMode, refs.length),
             },
             signal: options?.signal,
         }),

@@ -7,6 +7,7 @@ import { VideoSettingsPanel, videoModeLabel, videoResolutionLabel, videoSecondsL
 import { canvasThemes } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
 import type { AiConfig } from "@/stores/use-config-store";
+import { applyVideoScriptSettings } from "@/lib/video-script-settings";
 
 type CanvasVideoSettingsPopoverProps = {
     config: AiConfig;
@@ -16,6 +17,7 @@ type CanvasVideoSettingsPopoverProps = {
 };
 
 export function CanvasVideoSettingsPopover({ config, onConfigChange, buttonClassName, placement = "topLeft" }: CanvasVideoSettingsPopoverProps) {
+    config = applyVideoScriptSettings(config);
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const buttonRef = useRef<HTMLSpanElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
