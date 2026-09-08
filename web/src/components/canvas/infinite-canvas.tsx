@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 
 import { canvasThemes, type CanvasBackgroundMode } from "@/lib/canvas-theme";
 import { useThemeStore } from "@/stores/use-theme-store";
@@ -8,6 +8,7 @@ type InfiniteCanvasProps = {
     containerRef: React.RefObject<HTMLDivElement | null>;
     viewport: ViewportTransform;
     tool: "select" | "pan";
+    onToolChange: (tool: "select" | "pan") => void;
     backgroundMode?: CanvasBackgroundMode;
     onViewportChange: (viewport: ViewportTransform) => void;
     onCanvasMouseDown?: (event: React.PointerEvent<HTMLDivElement>) => void;
@@ -18,7 +19,7 @@ type InfiniteCanvasProps = {
     children: React.ReactNode;
 };
 
-export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = "lines", onViewportChange, onCanvasMouseDown, onCanvasDeselect, onCanvasDoubleClick, onContextMenu, onDrop, children }: InfiniteCanvasProps) {
+export function InfiniteCanvas({ containerRef, viewport, tool, onToolChange, backgroundMode = "lines", onViewportChange, onCanvasMouseDown, onCanvasDeselect, onCanvasDoubleClick, onContextMenu, onDrop, children }: InfiniteCanvasProps) {
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const panState = useRef({
         isPanning: false,
@@ -28,12 +29,12 @@ export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = 
         initialY: 0,
         hasMoved: false,
         startedOnBackground: false,
+        pointerId: null as number | null,
     });
     const scaleRef = useRef(viewport.k);
     const frameRef = useRef<number | null>(null);
     const nextViewportRef = useRef<ViewportTransform | null>(null);
-    const [isSpacePressed, setIsSpacePressed] = useState(false);
-    const [isControlPressed, setIsControlPressed] = useState(false);
+    const toolBeforeSpace = useRef<"select" | "pan" | null>(null);
     const [isPanning, setIsPanning] = useState(false);
 
     useEffect(() => {
@@ -49,27 +50,36 @@ export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = 
 
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
-            if (event.key === "Control") setIsControlPressed(true);
             if (event.code !== "Space") return;
             const target = event.target instanceof Element ? event.target : null;
             if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLSelectElement || target?.closest("[contenteditable='true']")) return;
             event.preventDefault();
-            setIsSpacePressed(true);
+            if (event.repeat) return;
+            toolBeforeSpace.current = tool;
+            onToolChange("pan");
+        };
+
+        const releaseSpace = () => {
+            if (toolBeforeSpace.current === null) return;
+            onToolChange(toolBeforeSpace.current);
+            toolBeforeSpace.current = null;
         };
 
         const handleKeyUp = (event: KeyboardEvent) => {
             if (event.code === "Space") {
                 const target = event.target instanceof Element ? event.target : null;
                 if (!(event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLSelectElement || target?.closest("[contenteditable='true']"))) event.preventDefault();
-                setIsSpacePressed(false);
+                releaseSpace();
             }
-            if (event.key === "Control") setIsControlPressed(false);
         };
 
         const handleBlur = () => {
-            setIsSpacePressed(false);
-            setIsControlPressed(false);
+            releaseSpace();
+            const pointerId = panState.current.pointerId;
+            if (pointerId !== null && containerRef.current?.hasPointerCapture(pointerId)) containerRef.current.releasePointerCapture(pointerId);
             panState.current.isPanning = false;
+            if (frameRef.current) cancelAnimationFrame(frameRef.current);
+            frameRef.current = null;
             setIsPanning(false);
             document.body.style.cursor = "";
         };
@@ -82,11 +92,28 @@ export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = 
             window.removeEventListener("keyup", handleKeyUp);
             window.removeEventListener("blur", handleBlur);
         };
-    }, []);
+    }, [containerRef, onToolChange, tool]);
 
-    const handleWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+    useEffect(() => {
+        if (tool === "pan") {
+            const focused = document.activeElement;
+            if (focused instanceof HTMLElement && containerRef.current?.contains(focused)) focused.blur();
+            return;
+        }
+        toolBeforeSpace.current = null;
+        panState.current.isPanning = false;
+        if (frameRef.current) cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+        const pointerId = panState.current.pointerId;
+        if (pointerId !== null && containerRef.current?.hasPointerCapture(pointerId)) containerRef.current.releasePointerCapture(pointerId);
+        setIsPanning(false);
+        document.body.style.cursor = "";
+    }, [containerRef, tool]);
+
+    const handleWheel = useCallback((event: React.WheelEvent<HTMLDivElement> | WheelEvent) => {
         const target = event.target instanceof Element ? event.target : null;
-        if (target?.closest("[data-canvas-no-zoom],.ant-modal,.ant-popover,.ant-dropdown,.ant-select-dropdown,.ant-picker-dropdown")) return;
+        if (target?.closest(".ant-modal,.ant-popover,.ant-dropdown,.ant-select-dropdown,.ant-picker-dropdown")) return;
+        if (!event.ctrlKey && target?.closest("[data-canvas-no-zoom]")) return;
 
         const delta = -event.deltaY;
         const factor = Math.pow(1.1, delta / 100);
@@ -104,19 +131,17 @@ export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = 
             y: mouseY - worldY * newScale,
             k: newScale,
         });
-    };
+    }, [containerRef, onViewportChange, viewport]);
 
-    const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    const handlePointerDownCapture = (event: React.PointerEvent<HTMLDivElement>) => {
+        if (!event.currentTarget.contains(event.target as Node)) return;
         const target = event.target instanceof Element ? event.target : null;
-        if (target?.closest("[data-canvas-no-zoom]")) return;
-        if (target?.closest("[data-connection-create-menu]")) return;
         const isBackgroundClick = !target?.closest("[data-node-id],[data-connection-id]");
-        const temporaryTool = event.ctrlKey || isSpacePressed;
-        const activeTool = temporaryTool ? (tool === "select" ? "pan" : "select") : tool;
-        const shouldPan = event.button === 1 || (event.button === 0 && activeTool === "pan" && isBackgroundClick);
+        const shouldPan = event.button === 1 || (event.button === 0 && tool === "pan");
 
         if (shouldPan) {
             event.preventDefault();
+            event.stopPropagation();
             event.currentTarget.setPointerCapture(event.pointerId);
             panState.current = {
                 isPanning: true,
@@ -126,17 +151,44 @@ export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = 
                 initialY: viewport.y,
                 hasMoved: false,
                 startedOnBackground: isBackgroundClick,
+                pointerId: event.pointerId,
             };
             setIsPanning(true);
             document.body.style.cursor = "grabbing";
             return;
         }
+    };
 
+    useEffect(() => {
+        // 在子控件拦截滚轮前阻止浏览器缩放，Ctrl + 滚轮只缩放画布。
+        const handleControlWheel = (event: WheelEvent) => {
+            if (!event.ctrlKey) return;
+            event.preventDefault();
+            const target = event.target instanceof Element ? event.target : null;
+            // 弹窗内的图片编辑器等保留自身滚轮交互，不缩放背后的画布。
+            if (target?.closest(".ant-modal,.ant-popover,.ant-dropdown,.ant-select-dropdown,.ant-picker-dropdown")) return;
+            event.stopPropagation();
+            handleWheel(event);
+        };
+        window.addEventListener("wheel", handleControlWheel, { capture: true, passive: false });
+        return () => window.removeEventListener("wheel", handleControlWheel, true);
+    }, [handleWheel]);
+
+    const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+        const target = event.target instanceof Element ? event.target : null;
+        if (target?.closest("[data-canvas-no-zoom],[data-connection-create-menu]")) return;
+        const isBackgroundClick = !target?.closest("[data-node-id],[data-connection-id]");
         if (event.button === 0 && isBackgroundClick) {
             event.preventDefault();
             event.currentTarget.setPointerCapture(event.pointerId);
             onCanvasMouseDown?.(event);
         }
+    };
+
+    const blockPanInteraction = (event: React.SyntheticEvent<HTMLDivElement>) => {
+        if (tool !== "pan" || !event.currentTarget.contains(event.target as Node)) return;
+        event.preventDefault();
+        event.stopPropagation();
     };
 
     const handleDoubleClick = (event: React.MouseEvent<HTMLDivElement>) => {
@@ -203,16 +255,20 @@ export function InfiniteCanvas({ containerRef, viewport, tool, backgroundMode = 
         return () => container.removeEventListener("wheel", preventWheelScroll);
     }, [containerRef]);
 
-    const temporaryTool = isControlPressed || isSpacePressed;
-    const activeTool = temporaryTool ? (tool === "select" ? "pan" : "select") : tool;
-    const cursor = isPanning ? "grabbing" : activeTool === "pan" ? "grab" : undefined;
+    const cursor = isPanning ? "grabbing" : tool === "pan" ? "grab" : undefined;
 
     return (
         <div
             ref={containerRef}
-            className="relative h-full w-full select-none overflow-hidden"
+            className={`relative h-full w-full select-none overflow-hidden ${isPanning ? "[&_*]:!cursor-grabbing" : tool === "pan" ? "[&_*]:!cursor-grab" : ""}`}
             style={{ background: theme.canvas.background, cursor }}
             onPointerDown={handlePointerDown}
+            onPointerDownCapture={handlePointerDownCapture}
+            onMouseDownCapture={blockPanInteraction}
+            onClickCapture={blockPanInteraction}
+            onDoubleClickCapture={blockPanInteraction}
+            onContextMenuCapture={blockPanInteraction}
+            onKeyDownCapture={blockPanInteraction}
             onDoubleClick={handleDoubleClick}
             onWheel={handleWheel}
             onContextMenu={onContextMenu}
