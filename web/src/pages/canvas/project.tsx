@@ -985,8 +985,17 @@ function InfiniteCanvasPage() {
             title: `${source.title} Copy`,
             position: { x: source.position.x + 36, y: source.position.y + 36 },
         };
+        const nextConnections = connectionsRef.current
+            .filter((connection) => connection.fromNodeId === nodeId || connection.toNodeId === nodeId)
+            .map((connection, index) => ({
+                ...connection,
+                id: `conn-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`,
+                fromNodeId: connection.fromNodeId === nodeId ? id : connection.fromNodeId,
+                toNodeId: connection.toNodeId === nodeId ? id : connection.toNodeId,
+            }));
 
         setNodes((prev) => [...prev, next]);
+        setConnections((prev) => [...prev, ...nextConnections]);
         setSelectedNodeIds(new Set([id]));
         setSelectedConnectionId(null);
         if (next.type !== CanvasNodeType.Group) setDialogNodeId(id);
@@ -1008,7 +1017,9 @@ function InfiniteCanvasPage() {
 
         clipboardRef.current = {
             nodes: copiedNodes,
-            connections: connectionsRef.current.filter((connection) => selectedIds.has(connection.fromNodeId) && selectedIds.has(connection.toNodeId)).map((connection) => ({ ...connection })),
+            connections: connectionsRef.current
+                .filter((connection) => selectedIds.has(connection.fromNodeId) || selectedIds.has(connection.toNodeId))
+                .map((connection) => ({ ...connection })),
         };
     }, []);
 
@@ -1051,8 +1062,8 @@ function InfiniteCanvasPage() {
         });
 
         const nextConnections = clipboard.connections.flatMap((connection, index) => {
-            const fromNodeId = idMap.get(connection.fromNodeId);
-            const toNodeId = idMap.get(connection.toNodeId);
+            const fromNodeId = idMap.get(connection.fromNodeId) || connection.fromNodeId;
+            const toNodeId = idMap.get(connection.toNodeId) || connection.toNodeId;
             if (!fromNodeId || !toNodeId) return [];
             return [
                 {
@@ -2337,9 +2348,19 @@ function InfiniteCanvasPage() {
 
             setRunningNodeId(nodeId);
             const runController = startGenerationRequest(nodeId, nodeId, nodeId);
-            const generationContext = await hydrateNodeGenerationContext(
-                buildNodeGenerationContext(nodeId, nodesRef.current, connectionsRef.current, prompt),
-            );
+            let generationContext: Awaited<ReturnType<typeof hydrateNodeGenerationContext>>;
+            try {
+                generationContext = await hydrateNodeGenerationContext(buildNodeGenerationContext(nodeId, nodesRef.current, connectionsRef.current, prompt), runController.signal);
+            } catch (error) {
+                if (!isGenerationCanceled(error)) {
+                    const errorDetails = error instanceof Error ? error.message : t("canvas.projectPage.generationFailed");
+                    message.error(errorDetails);
+                    setNodes((prev) => prev.map((node) => (node.id === nodeId ? { ...node, metadata: { ...node.metadata, status: NODE_STATUS_ERROR, errorDetails } } : node)));
+                }
+                finishGenerationRequest(nodeId, runController);
+                setRunningNodeId(null);
+                return;
+            }
             const effectivePrompt = generationContext.prompt.trim();
             if (runController.signal.aborted) {
                 finishGenerationRequest(nodeId, runController);
