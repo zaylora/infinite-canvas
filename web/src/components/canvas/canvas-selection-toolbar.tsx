@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { Group, Ungroup } from "lucide-react";
 import { Tooltip } from "antd";
 import { useTranslation } from "react-i18next";
@@ -18,6 +18,7 @@ export function CanvasSelectionToolbar({
     canUngroup,
     onGroup,
     onUngroup,
+    onConnectStart,
 }: {
     nodes: CanvasNodeData[];
     viewport: ViewportTransform;
@@ -26,6 +27,7 @@ export function CanvasSelectionToolbar({
     canUngroup: boolean;
     onGroup: () => void;
     onUngroup: () => void;
+    onConnectStart?: (event: ReactMouseEvent) => void;
 }) {
     const { t } = useTranslation();
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
@@ -56,6 +58,20 @@ export function CanvasSelectionToolbar({
                     strokeLinecap="round"
                 />
             </svg>
+            {showToolbar && onConnectStart ? (
+                <button
+                    type="button"
+                    aria-label="拖拽以批量连接节点"
+                    title="拖拽以批量连接节点"
+                    className="absolute z-[70] flex size-12 -translate-x-1/2 -translate-y-1/2 cursor-crosshair items-center justify-center"
+                    style={{ left: left + width - 1, top: top + height / 2 }}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onMouseDown={onConnectStart}
+                    onClick={(event) => event.stopPropagation()}
+                >
+                    <span className="size-3 rounded-full border-2 transition-transform hover:scale-125" style={{ background: theme.node.panel, borderColor: theme.node.muted }} />
+                </button>
+            ) : null}
             {showActions ? (
                 <div
                     className="absolute z-[70] flex h-12 -translate-x-1/2 -translate-y-full items-center overflow-visible rounded-[18px] border border-black/10 bg-white text-[15px] text-[#242529] shadow-[0_8px_28px_rgba(15,23,42,.12)]"
