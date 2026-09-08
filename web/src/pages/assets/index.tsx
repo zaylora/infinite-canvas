@@ -9,7 +9,7 @@ import { formatBytes, readFileAsDataUrl } from "@/lib/image-utils";
 import { getMediaBlob } from "@/services/file-storage";
 import { getImageBlob, uploadImage } from "@/services/image-storage";
 import { cn } from "@/lib/utils";
-import { useAssetStore, type Asset, type AssetKind, type ImageAsset } from "@/stores/use-asset-store";
+import { ASSET_CATEGORIES, useAssetStore, type Asset, type AssetCategory, type AssetKind, type ImageAsset } from "@/stores/use-asset-store";
 import { exportAssets, readAssetPackage } from "./asset-transfer";
 
 type AssetFormValues = {
@@ -40,6 +40,7 @@ export default function AssetsPage() {
     const removeAsset = useAssetStore((state) => state.removeAsset);
     const [keyword, setKeyword] = useState("");
     const [kindFilter, setKindFilter] = useState<AssetKind | "all">("all");
+    const [categoryFilter, setCategoryFilter] = useState<AssetCategory | "all">("all");
     const [page, setPage] = useState(1);
     const [pageSize, setPageSize] = useState(10);
     const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
@@ -58,10 +59,11 @@ export default function AssetsPage() {
         const query = keyword.trim().toLowerCase();
         return validAssets.filter((asset) => {
             if (kindFilter !== "all" && asset.kind !== kindFilter) return false;
+            if (categoryFilter !== "all" && asset.category !== categoryFilter) return false;
             if (!query) return true;
             return assetSearchText(asset).includes(query);
         });
-    }, [validAssets, keyword, kindFilter]);
+    }, [validAssets, keyword, kindFilter, categoryFilter]);
 
     const visibleAssets = useMemo(() => {
         const start = (page - 1) * pageSize;
@@ -264,6 +266,10 @@ export default function AssetsPage() {
                                     {t("assets.add")}
                                 </button>
                             </div>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-xs font-medium text-stone-500">{t("assets.category")}</span>
+                            {(["all", ...ASSET_CATEGORIES] as const).map((option) => <Tag.CheckableTag key={option} checked={categoryFilter === option} onChange={() => { setPage(1); setCategoryFilter(option); }}>{option === "all" ? t("common.all") : t(`assets.categories.${option}`)}</Tag.CheckableTag>)}
                         </div>
                     </div>
                 </div>

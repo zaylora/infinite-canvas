@@ -1,5 +1,5 @@
 import { memo, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { App, Empty, Input, Popconfirm, Select, Spin, Tag } from "antd";
+import { App, Button, Empty, Input, Modal, Popconfirm, Select, Spin, Tag } from "antd";
 import { useQuery } from "@tanstack/react-query";
 import { BookOpen, Check, ChevronRight, Download, Eye, FileText, Image as ImageIcon, ListChecks, Music2, Plus, Search, Settings2, Square, Trash2, Type, Video } from "lucide-react";
 import { motion } from "motion/react";
@@ -13,7 +13,7 @@ import { PromptDetailDialog } from "@/pages/prompts/components/prompt-detail-dia
 import { fetchSourcePrompts, type Prompt } from "@/services/api/prompts";
 import { uploadMediaFile } from "@/services/file-storage";
 import { uploadImage } from "@/services/image-storage";
-import { useAssetStore, type Asset, type AssetKind } from "@/stores/use-asset-store";
+import { ASSET_CATEGORIES, useAssetStore, type Asset, type AssetCategory, type AssetKind } from "@/stores/use-asset-store";
 import { usePromptSourceStore } from "@/stores/use-prompt-source-store";
 import { CANVAS_SIDE_PANEL_MAX_WIDTH, CANVAS_SIDE_PANEL_MIN_WIDTH, CANVAS_SIDE_PANEL_MOTION_MS, useCanvasSidePanelStore } from "@/stores/use-canvas-side-panel-store";
 import { useThemeStore } from "@/stores/use-theme-store";
@@ -301,10 +301,12 @@ const ASSET_GROUPS: { kind: AssetKind; icon: typeof Square }[] = [
     { kind: "image", icon: ImageIcon },
     { kind: "video", icon: Video },
     { kind: "text", icon: FileText },
+    { kind: "audio", icon: Music2 },
 ];
 
 function buildInsertPayload(asset: Asset): InsertAssetPayload {
     if (asset.kind === "text") return { kind: "text", content: asset.data.content, title: asset.title };
+    if (asset.kind === "audio") return { kind: "audio", ...asset.data, title: asset.title };
     if (asset.kind === "video") return { kind: "video", url: asset.data.url, storageKey: asset.data.storageKey, title: asset.title, width: asset.data.width, height: asset.data.height };
     return { kind: "image", dataUrl: asset.data.dataUrl, storageKey: asset.data.storageKey, title: asset.title };
 }
@@ -317,6 +319,10 @@ const CanvasAssetsTab = memo(function CanvasAssetsTab({ onInsert, onInsertAssets
     const removeAsset = useAssetStore((state) => state.removeAsset);
     const [keyword, setKeyword] = useState("");
     const [tagFilter, setTagFilter] = useState<string>("all");
+    const [categoryFilter, setCategoryFilter] = useState<AssetCategory | "all">("all");
+    const [importOpen, setImportOpen] = useState(false);
+    const [importCategory, setImportCategory] = useState<AssetCategory>("character");
+    const [importFiles, setImportFiles] = useState<File[]>([]);
     const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
     const [uploading, setUploading] = useState(false);
     const [selecting, setSelecting] = useState(false);
@@ -327,8 +333,8 @@ const CanvasAssetsTab = memo(function CanvasAssetsTab({ onInsert, onInsertAssets
 
     const filtered = useMemo(() => {
         const query = keyword.trim().toLowerCase();
-        return assets.filter((asset) => (tagFilter === "all" || (asset.tags || []).includes(tagFilter)) && (!query || [asset.title, ...(asset.tags || [])].join(" ").toLowerCase().includes(query)));
-    }, [assets, keyword, tagFilter]);
+        return assets.filter((asset) => (categoryFilter === "all" || asset.category === categoryFilter) && (tagFilter === "all" || (asset.tags || []).includes(tagFilter)) && (!query || [asset.title, ...(asset.tags || [])].join(" ").toLowerCase().includes(query)));
+    }, [assets, keyword, tagFilter, categoryFilter]);
 
     const groups = useMemo(() => ASSET_GROUPS.map((group) => ({ ...group, items: filtered.filter((asset) => asset.kind === group.kind) })).filter((group) => group.items.length > 0), [filtered]);
     const selectedAssets = filtered.filter((asset) => selectedIds.has(asset.id));
@@ -340,21 +346,25 @@ const CanvasAssetsTab = memo(function CanvasAssetsTab({ onInsert, onInsertAssets
         return next;
     });
 
-    const handleFiles = async (fileList: FileList | null) => {
-        const files = Array.from(fileList || []);
+    const handleFiles = async () => {
+        const files = importFiles;
         if (!files.length) return;
         setUploading(true);
         const hide = message.loading(t("canvas.sidePanel.addingAssets"), 0);
         let added = 0;
         try {
             for (const file of files) {
-                if (file.type.startsWith("image/")) {
+                if (file.type.startsWith("audio/")) {
+                    const media = await uploadMediaFile(file, "audio");
+                    addAsset({ kind: "audio", category: "audio", title: file.name, coverUrl: "", tags: [], data: { url: media.url, storageKey: media.storageKey, bytes: media.bytes, mimeType: media.mimeType, durationMs: media.durationMs } });
+                    added += 1;
+                } else if (file.type.startsWith("image/")) {
                     const image = await uploadImage(file);
-                    addAsset({ kind: "image", title: file.name || t("assets.kinds.image"), coverUrl: image.url, tags: [], data: { dataUrl: image.url, storageKey: image.storageKey, width: image.width, height: image.height, bytes: image.bytes, mimeType: image.mimeType } });
+                    addAsset({ kind: "image", category: importCategory, title: file.name || t("assets.kinds.image"), coverUrl: image.url, tags: [], data: { dataUrl: image.url, storageKey: image.storageKey, width: image.width, height: image.height, bytes: image.bytes, mimeType: image.mimeType } });
                     added += 1;
                 } else if (file.type.startsWith("video/")) {
                     const media = await uploadMediaFile(file, "video");
-                    addAsset({ kind: "video", title: file.name || t("assets.kinds.video"), coverUrl: "", tags: [], data: { url: media.url, storageKey: media.storageKey, width: media.width || 0, height: media.height || 0, bytes: media.bytes, mimeType: media.mimeType } });
+                    addAsset({ kind: "video", category: importCategory, title: file.name || t("assets.kinds.video"), coverUrl: "", tags: [], data: { url: media.url, storageKey: media.storageKey, width: media.width || 0, height: media.height || 0, bytes: media.bytes, mimeType: media.mimeType } });
                     added += 1;
                 }
             }
@@ -366,6 +376,8 @@ const CanvasAssetsTab = memo(function CanvasAssetsTab({ onInsert, onInsertAssets
         } finally {
             hide();
             setUploading(false);
+            setImportOpen(false);
+            setImportFiles([]);
             if (fileInputRef.current) fileInputRef.current.value = "";
         }
     };
@@ -377,14 +389,33 @@ const CanvasAssetsTab = memo(function CanvasAssetsTab({ onInsert, onInsertAssets
                 <button
                     type="button"
                     disabled={uploading}
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={() => { setImportCategory(categoryFilter === "all" ? "character" : categoryFilter); setImportFiles([]); setImportOpen(true); }}
                     className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold transition hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-white/10"
                     style={{ color: theme.node.text }}
                 >
                     <Plus className="size-3.5" />
                     {t("canvas.sidePanel.add")}
                 </button>
-                <input ref={fileInputRef} type="file" accept="image/*,video/*" multiple className="hidden" onChange={(e) => void handleFiles(e.target.files)} />
+                <input ref={fileInputRef} type="file" accept={importCategory === "audio" ? "audio/*" : "image/*,video/*"} multiple className="hidden" onChange={(e) => { setImportFiles(Array.from(e.target.files || [])); e.target.value = ""; }} />
+            </div>
+            <Modal title={t("assets.import")} open={importOpen} onCancel={() => { if (!uploading) setImportOpen(false); }} onOk={() => void handleFiles()} confirmLoading={uploading} okButtonProps={{ disabled: !importFiles.length }} okText={t("assets.import")} cancelText={t("common.cancel")} closable={!uploading} maskClosable={!uploading}>
+                <div className="space-y-4 py-2">
+                    <label className="block space-y-2">
+                        <span>{t("assets.category")}</span>
+                        <Select className="w-full" value={importCategory} disabled={uploading} options={ASSET_CATEGORIES.map((value) => ({ value, label: t(`assets.categories.${value}`) }))} onChange={(value) => { setImportCategory(value); setImportFiles([]); }} />
+                    </label>
+                    <Button type="text" disabled={uploading} onClick={() => fileInputRef.current?.click()} icon={<Plus className="size-4" />}>{t("assets.chooseFiles")}</Button>
+                    <div className="max-h-48 overflow-auto text-sm">
+                        {importFiles.map((file, index) => <div key={index} className="truncate" title={file.name}>{file.name}</div>)}
+                    </div>
+                </div>
+            </Modal>
+            <div className="flex flex-wrap gap-1 px-3 pb-2">
+                {(["all", ...ASSET_CATEGORIES] as const).map((value) => (
+                    <Tag.CheckableTag key={value} checked={categoryFilter === value} className={cn("prompt-filter-tag", categoryFilter === value && "is-active")} onChange={() => { setCategoryFilter(value); setSelectedIds(new Set()); }}>
+                        {value === "all" ? t("common.all") : t(`assets.categories.${value}`)}
+                    </Tag.CheckableTag>
+                ))}
             </div>
             <div className="flex flex-wrap items-center gap-1 px-3 pb-2 text-xs">
                 <button type="button" className="flex items-center gap-1 rounded-md px-2 py-1 hover:bg-black/5 dark:hover:bg-white/10" onClick={() => { setSelecting(!selecting); setSelectedIds(new Set()); }}>
@@ -484,6 +515,7 @@ function AssetCard({ asset, theme, selecting, selected, onToggle, onInsert, onRe
 }
 
 function AssetCover({ asset }: { asset: Asset }) {
+    if (asset.kind === "audio") return <div className="flex size-full flex-col items-center justify-center gap-2 p-3"><Music2 className="size-8 opacity-60" /><span className="line-clamp-2 text-xs">{asset.title}</span></div>;
     if (asset.kind === "text") return <div className="size-full overflow-hidden whitespace-pre-wrap break-words p-2.5 text-[11px] leading-snug opacity-80">{asset.data.content}</div>;
     if (asset.kind === "video") {
         if (asset.coverUrl) return <img src={asset.coverUrl} alt="" className="size-full object-cover transition duration-300 group-hover:scale-[1.04]" />;

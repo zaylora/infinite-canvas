@@ -77,6 +77,9 @@ export default {
         description: "Save frequently used text and images, then find them quickly by type, title, or tag.",
         search: "Search titles, content, tags, or sources",
         type: "Type",
+        category: "Category",
+        chooseFiles: "Choose files",
+        categories: { character: "Character", scene: "Scene", object: "Object", audio: "Audio" },
         export: "Export assets",
         import: "Import assets",
         add: "Add asset",
@@ -92,7 +95,7 @@ export default {
         importFailed: "Import failed. Select a valid asset package.",
         deleted: "Asset deleted",
         packageName: "my-assets.zip",
-        kinds: { text: "Text", image: "Image", video: "Video" },
+        kinds: { text: "Text", image: "Image", video: "Video", audio: "Audio" },
         fields: {
             title: "Title",
             titleRequired: "Enter a title",

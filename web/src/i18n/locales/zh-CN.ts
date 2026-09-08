@@ -77,6 +77,9 @@ export default {
         description: "收藏常用文本和图片，按类型、标题和标签快速查找。",
         search: "搜索标题、内容、标签或来源",
         type: "类型",
+        category: "分类",
+        chooseFiles: "选择文件",
+        categories: { character: "人物", scene: "场景", object: "物品", audio: "音频" },
         export: "导出资产",
         import: "导入资产",
         add: "新增资产",
@@ -92,7 +95,7 @@ export default {
         importFailed: "导入失败，请选择有效的资产压缩包",
         deleted: "资产已删除",
         packageName: "我的资产.zip",
-        kinds: { text: "文本", image: "图片", video: "视频" },
+        kinds: { text: "文本", image: "图片", video: "视频", audio: "音频" },
         fields: {
             title: "标题",
             titleRequired: "请输入标题",

@@ -2985,6 +2985,12 @@ function InfiniteCanvasPage() {
         (payload: InsertAssetPayload) => {
             if (payload.kind === "text") {
                 insertAssistantText(payload.content, payload.title);
+            } else if (payload.kind === "audio") {
+                const spec = NODE_DEFAULT_SIZE[CanvasNodeType.Audio];
+                const center = screenToCanvas((containerRef.current?.getBoundingClientRect().left || 0) + size.width / 2, (containerRef.current?.getBoundingClientRect().top || 0) + size.height / 2);
+                const id = `audio-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+                setNodes((prev) => [...prev, { id, type: CanvasNodeType.Audio, title: payload.title, position: { x: center.x - spec.width / 2, y: center.y - spec.height / 2 }, width: spec.width, height: spec.height, metadata: { content: payload.url, storageKey: payload.storageKey, status: NODE_STATUS_SUCCESS, mimeType: payload.mimeType } }]);
+                setSelectedNodeIds(new Set([id]));
             } else if (payload.kind === "video") {
                 const spec = NODE_DEFAULT_SIZE[CanvasNodeType.Video];
                 const center = screenToCanvas((containerRef.current?.getBoundingClientRect().left || 0) + size.width / 2, (containerRef.current?.getBoundingClientRect().top || 0) + size.height / 2);
@@ -3019,7 +3025,7 @@ function InfiniteCanvasPage() {
                 ...createCanvasNode(CanvasNodeType.Text, center, { content: asset.data.content, status: NODE_STATUS_SUCCESS }),
                 title: asset.title,
             };
-            const type = asset.kind === "image" ? CanvasNodeType.Image : CanvasNodeType.Video;
+            const type = asset.kind === "image" ? CanvasNodeType.Image : asset.kind === "video" ? CanvasNodeType.Video : CanvasNodeType.Audio;
             const spec = NODE_DEFAULT_SIZE[type];
             const dimensions = asset.kind === "image"
                 ? fitNodeSize(asset.data.width, asset.data.height)
